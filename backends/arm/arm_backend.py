@@ -1,4 +1,4 @@
-# Copyright 2023-2024 Arm Limited and/or its affiliates.
+# Copyright 2023-2025 Arm Limited and/or its affiliates.
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
@@ -200,6 +200,20 @@ def is_tosa(compile_spec: List[CompileSpec]) -> bool:
         if spec.key == "output_format":
             return spec.value.decode() == "tosa"
     return False
+
+
+def is_quantize_io(compile_specs: List[CompileSpec]) -> bool:
+    for spec in compile_specs:
+        if spec.key == "quantize_io" and spec.value.decode() == "True":
+            return True
+    return False
+
+
+def get_tosa_version(compile_spec: List[CompileSpec]) -> TosaSpecification:
+    for spec in compile_spec:
+        if spec.key == "tosa_version":
+            return TosaSpecification.create_from_string(spec.value.decode())
+    raise RuntimeError("Could not find TOSA version in CompileSpec")
 
 
 def get_intermediate_path(compile_spec: List[CompileSpec]) -> Optional[str]:
