@@ -1,0 +1,32 @@
+changelog:
+  categories:
+    - title: API Changes
+      labels:
+        - "release notes: api"
+    - title: EXIR
+      labels:
+        - "release notes: exir"
+    - title: Build
+      labels:
+        - "release notes: runtime"
+    - title: Backends
+      labels:
+        - "release notes: backends"
+    - title: Devtools
+      labels:
+        - "release notes: devtools"
+    - title: Examples
+      labels:
+        - "release notes: examples"
+    - title: Quantization
+      labels:
+        - "release notes: quantization"
+    - title: Kernel Libraries
+      labels:
+        - "release notes: ops & kernels"
+    - title: Not User Facing
+      labels:
+        - "topic: not user facing"
+    - title: Other Changes
+      labels:
+        - "*"
