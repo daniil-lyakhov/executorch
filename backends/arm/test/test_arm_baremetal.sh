@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2024 Arm Limited and/or its affiliates.
+# Copyright 2024-2025 Arm Limited and/or its affiliates.
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
@@ -78,7 +78,7 @@ test_pytest_ethosu_fvp() { # Same as test_pytest but also sometime verify using 
     backends/arm/test/setup_testing.sh
 
     # Run arm baremetal pytest tests with FVP
-    pytest  --verbose --color=yes --numprocesses=auto backends/arm/test/ --arm_quantize_io --arm_run_corstoneFVP
+    pytest  --verbose --color=yes --numprocesses=auto backends/arm/test/ --arm_run_corstoneFVP
 }
 
 test_run_ethosu_fvp() { # End to End model tests

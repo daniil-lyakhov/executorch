@@ -1,4 +1,4 @@
-# Copyright 2024 Arm Limited and/or its affiliates.
+# Copyright 2024-2025 Arm Limited and/or its affiliates.
 # All rights reserved.
 #
 # This source code is licensed under the BSD-style license found in the
@@ -265,7 +265,7 @@ class TestDepthwiseConv(unittest.TestCase):
     @pytest.mark.corstone_fvp
     @unittest.expectedFailure
     def test_dw_conv2d_u55_BI(
-        self, test_name: str, model: torch.nn.Module, set_quantize_io: bool = False
+        self, test_name: str, model: torch.nn.Module, set_quantize_io: bool = True
     ):
         self._test_dw_conv_ethos_BI_pipeline(
             model,
@@ -281,7 +281,7 @@ class TestDepthwiseConv(unittest.TestCase):
     @pytest.mark.corstone_fvp
     @unittest.expectedFailure
     def test_dw_conv1d_u55_BI(
-        self, test_name: str, model: torch.nn.Module, set_quantize_io: bool = False
+        self, test_name: str, model: torch.nn.Module, set_quantize_io: bool = True
     ):
         self._test_dw_conv_ethos_BI_pipeline(
             model,
@@ -294,7 +294,7 @@ class TestDepthwiseConv(unittest.TestCase):
     @parameterized.expand(testsuite_conv1d + testsuite_conv2d_u85)
     @pytest.mark.corstone_fvp
     def test_dw_conv_u85_BI(
-        self, test_name: str, model: torch.nn.Module, set_quantize_io: bool = False
+        self, test_name: str, model: torch.nn.Module, set_quantize_io: bool = True
     ):
         self._test_dw_conv_ethos_BI_pipeline(
             model,
@@ -309,7 +309,7 @@ class TestDepthwiseConv(unittest.TestCase):
     @pytest.mark.corstone_fvp
     @conftest.expectedFailureOnFVP
     def test_dw_conv_u85_BI_xfails(
-        self, test_name: str, model: torch.nn.Module, set_quantize_io: bool = False
+        self, test_name: str, model: torch.nn.Module, set_quantize_io: bool = True
     ):
         self._test_dw_conv_ethos_BI_pipeline(
             model,
