@@ -106,8 +106,8 @@ def main(suite: str, model_name: str, input_shape, quantize: bool, dataset_path:
         calibration_dataset = load_calibration_dataset(dataset_path)
 
         captured_model = aten_dialect.module()
-        quantized_model = quantize_model(captured_model, calibration_dataset)
-        aten_dialect: ExportedProgram = export(quantized_model, example_args)
+        compressed_model = nncf.compress_weights(captured_model)
+        aten_dialect: ExportedProgram = export(compressed_model, example_args)
 
     # Convert to edge dialect
     edge_program: EdgeProgramManager = to_edge(aten_dialect)

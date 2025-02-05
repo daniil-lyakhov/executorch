@@ -69,9 +69,8 @@ target_include_directories(
 
 # build executor runner
 add_executable(openvino_executor_runner ${_openvino_executor_runner__srcs})
-
 target_include_directories(
-  openvino_executor_runner PUBLIC ${_common_include_directories} ${EXECUTORCH_ROOT}/third-party/gflags/build/include
+  openvino_executor_runner PUBLIC ${_common_include_directories}
 )
 
 # Set the path to the library directory
