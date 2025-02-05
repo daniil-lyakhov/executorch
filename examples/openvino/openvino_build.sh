@@ -27,12 +27,13 @@ main() {
 
 
     # Build the project
-    cmake --build cmake-openvino-out --target install --config Release -j5
+    cmake --build cmake-openvino-out --target install --config Release -j40
 
     ## Build example
     local example_dir=examples/openvino
     local example_build_dir="${build_dir}/${example_dir}"
     local cmake_prefix_path="${PWD}/${build_dir}/lib/cmake/ExecuTorch;${PWD}/${build_dir}/third-party/gflags;"
+
     rm -rf "${example_build_dir}"
 
     ## OpenVINO original
@@ -41,7 +42,7 @@ main() {
           -B"${example_build_dir}" \
           $EXECUTORCH_ROOT/$example_dir
 
-    cmake --build "${example_build_dir}" -j5
+    cmake --build "${example_build_dir}" -j40
 
     # Switch back to the original directory
     cd - > /dev/null
