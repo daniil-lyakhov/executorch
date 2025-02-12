@@ -179,6 +179,9 @@ def main(
     dataset_path: str,
     device: str,
     batch_size: int,
+    quantization_flow: str,
+    quantizer_kwargs: dict = None,
+    quantize_pt2e_kwargs: dict = None,
 ):
     """
     Main function to load, quantize, and validate a model.
@@ -193,6 +196,8 @@ def main(
     :param batch_size: Batch size for dataset loading.
     """
 
+    quantizer_kwargs = quantizer_kwargs or {}
+    quantize_pt2e_kwargs = quantize_pt2e_kwargs or {}
     # Load the selected model
     model = load_model(suite, model_name)
     model = model.eval()
@@ -227,6 +232,9 @@ def main(
         quantized_model = quantize_model(
             aten_dialect.module(),
             calibration_dataset,
+            quantizer_kwargs=quantizer_kwargs,
+            quantize_pt2e_kwargs=quantize_pt2e_kwargs
+
         )
 
         aten_dialect: ExportedProgram = export(quantized_model, example_args)
@@ -251,6 +259,7 @@ def main(
         exec_prog.write_to_file(file)
     print(f"Model exported and saved as {model_file_name} on {device}.")
 
+    acc_top1 = -1
     if validate:
         if suite == "huggingface":
             msg = f"Validation of {suite} models did not support yet."
@@ -263,6 +272,7 @@ def main(
         print("Start validation of the model:")
         acc_top1 = validate_model(model_file_name, calibration_dataset)
         print(f"acc@1: {acc_top1}")
+    return acc_top1
 
 
 if __name__ == "__main__":
