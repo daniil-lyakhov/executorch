@@ -3,6 +3,7 @@ import sys
 import pandas as pd
 from aot_openvino_compiler import main as aot_main
 from executorch.backends.openvino.quantizer.quantizer import QuantizationMode
+from nncf.quantization.advanced_parameters import AdvancedSmoothQuantParameters
 
 import nncf
 
@@ -25,15 +26,15 @@ MODELS = (
     ),
     (
         "torchvision",
-        ("vit_b_16", {"mode": QuantizationMode.INT8_TRANSFORMER}, {"smooth_quant": True}),
+        ("vit_b_16", {"mode": QuantizationMode.INT8_TRANSFORMER}, {"smooth_quant": True, "smooth_quant_params": AdvancedSmoothQuantParameters(matmul=0.15)}),
     ),
-)
+)[-1:]
 
 
 def main(dataset_path: str):
     result = []
     for suite, (model_name, quantizer_kwargs, quantize_pt2e_kwargs) in MODELS:
-        for quantize in [False, True]:
+        for quantize in [True, False]:
 
             try:
                 print(30 * "*")
