@@ -8,26 +8,40 @@ import argparse
 import os
 import shutil
 import subprocess
+from itertools import islice
 from pathlib import Path
 
 import executorch
 
-import nncf.torch
+#import nncf
 import numpy as np
 import timm
 import torch
 import torchvision.models as torchvision_models
-from executorch.backends.openvino.partitioner import OpenvinoPartitioner
-from executorch.backends.openvino.quantizer.quantizer import quantize_model
+#from executorch.backends.openvino import OpenVINOQuantizer
+#from executorch.backends.openvino.partitioner import OpenvinoPartitioner
 from executorch.exir import EdgeProgramManager, to_edge_transform_and_lower
 from executorch.exir.backend.backend_details import CompileSpec
+#from nncf.experimental.torch.fx.quantization.quantize_pt2e import quantize_pt2e
 from sklearn.metrics import accuracy_score
 from timm.data import resolve_data_config
 from timm.data.transforms_factory import create_transform
+from torch.ao.quantization.quantize_pt2e import convert_pt2e, prepare_pt2e
 from torch.export import export
 from torch.export.exported_program import ExportedProgram
 from torchvision import datasets
 from transformers import AutoModel
+
+from executorch.backends.xnnpack.partition.xnnpack_partitioner import XnnpackPartitioner
+from executorch.exir import EdgeProgramManager, ExecutorchProgramManager, to_edge_transform_and_lower
+from executorch.exir.backend.backend_api import to_backend
+
+from torch.ao.quantization.quantize_pt2e import convert_pt2e, prepare_pt2e
+from torch.ao.quantization.quantizer.xnnpack_quantizer import (
+    get_symmetric_quantization_config,
+    XNNPACKQuantizer,
+)
+
 
 
 # Function to load a model based on the selected suite
@@ -126,8 +140,29 @@ def dump_inputs(calibration_dataset, dest_path):
     return input_files, targets
 
 
+def quantize_model(model, calibration_dataset, default_subset_size =300):
+    """This is the official recommended flow for quantization in pytorch 2.0 export"""
+    batch_size = calibration_dataset.batch_size
+    subset_size = (default_subset_size // batch_size) + int(
+        default_subset_size % batch_size > 0
+    )
+
+    quantizer = XNNPACKQuantizer()
+    # if we set is_per_channel to True, we also need to add out_variant of quantize_per_channel/dequantize_per_channel
+    operator_config = get_symmetric_quantization_config(is_per_channel=False)
+    quantizer.set_global(operator_config)
+    m = prepare_pt2e(model, quantizer)
+    # calibration
+    for data in islice(calibration_dataset, subset_size):
+        m(data[0])
+
+    m = convert_pt2e(m)
+    # make sure we can export to flat buffer
+    return m
+
+
 def validate_model(
-    model_file_name: str, calibration_dataset: torch.utils.data.DataLoader
+    model_file_name: str, calibration_dataset: torch.utils.data.DataLoader, path_to_runner: str
 ) -> float:
     """
     Validates the model using the calibration dataset.
@@ -154,8 +189,9 @@ def validate_model(
 
     subprocess.run(
         [
-            "../../../cmake-out/examples/openvino/openvino_executor_runner",
+            path_to_runner,
             f"--model_path={model_file_name}",
+            #f"--num_executions=100",
             f"--input_list_path={inp_list_file}",
             f"--output_folder_path={out_path}",
         ]
@@ -179,6 +215,8 @@ def main(
     dataset_path: str,
     device: str,
     batch_size: int,
+    quantization_flow: str,
+    path_to_runner: str
 ):
     """
     Main function to load, quantize, and validate a model.
@@ -191,6 +229,7 @@ def main(
     :param dataset_path: Path to the dataset for calibration/validation.
     :param device: The device to run the model on (e.g., "cpu", "gpu").
     :param batch_size: Batch size for dataset loading.
+    :param quantization_flow: The quantization method to use.
     """
 
     # Load the selected model
@@ -232,19 +271,11 @@ def main(
         aten_dialect: ExportedProgram = export(quantized_model, example_args)
 
     # Convert to edge dialect and lower the module to the backend with a custom partitioner
-    compile_spec = [CompileSpec("device", device.encode())]
-    lowered_module: EdgeProgramManager = to_edge_transform_and_lower(
+    edge: EdgeProgramManager = to_edge_transform_and_lower(
         aten_dialect,
-        partitioner=[
-            OpenvinoPartitioner(compile_spec),
-        ],
+        partitioner=[XnnpackPartitioner()],
     )
-
-    # Apply backend-specific passes
-    exec_prog = lowered_module.to_executorch(
-        config=executorch.exir.ExecutorchBackendConfig()
-    )
-
+    exec_prog = edge.to_executorch()
     # Serialize and save it to a file
     model_file_name = f"{model_name}_{'int8' if quantize else 'fp32'}.pte"
     with open(model_file_name, "wb") as file:
@@ -261,7 +292,7 @@ def main(
             raise ValueError(msg)
 
         print("Start validation of the model:")
-        acc_top1 = validate_model(model_file_name, calibration_dataset)
+        acc_top1 = validate_model(model_file_name, calibration_dataset, path_to_runner)
         print(f"acc@1: {acc_top1}")
 
 
@@ -305,19 +336,36 @@ if __name__ == "__main__":
         default="CPU",
         help="Target device for compiling the model (e.g., CPU, GPU). Default is CPU.",
     )
+    parser.add_argument(
+        "--quantization_flow",
+        type=str,
+        choices=["pt2e", "nncf"],
+        default="nncf",
+        help="Select the quantization flow (nncf or pt2e):"
+        " pt2e is the default torch.ao quantization flow, while"
+        " nncf is a custom method with additional algorithms to improve model performance.",
+    )
+    parser.add_argument(
+        "--path_to_runner",
+        type=str,
+        required=False,
+        default=".",
+        help="Path to OVRunner"
+    )
 
     args = parser.parse_args()
 
     # Run the main function with parsed arguments
     # Disable nncf patching as export of the patched model is not supported.
-    with nncf.torch.disable_patching():
-        main(
-            args.suite,
-            args.model,
-            args.input_shape,
-            args.quantize,
-            args.validate,
-            args.dataset,
-            args.device,
-            args.batch_size,
-        )
+    main(
+        args.suite,
+        args.model,
+        args.input_shape,
+        args.quantize,
+        args.validate,
+        args.dataset,
+        args.device,
+        args.batch_size,
+        args.quantization_flow,
+        args.path_to_runner,
+    )

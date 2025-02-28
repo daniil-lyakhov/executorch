@@ -128,7 +128,12 @@ if(NOT CMAKE_TOOLCHAIN_FILE MATCHES ".*(iOS|ios\.toolchain)\.cmake$")
   # be at ${CMAKE_BINARY_DIR}/backends/xnnpack
   #
   list(TRANSFORM _xnn_executor_runner__srcs PREPEND "${EXECUTORCH_ROOT}/")
+  set(_xnn_executor_runner__srcs 
+  /home/devuser/dlyakhov/executorch/examples/openvino/executor_runner/openvino_executor_runner.cpp
+  )
+    
   add_executable(xnn_executor_runner ${_xnn_executor_runner__srcs})
+
 
   if(EXECUTORCH_ENABLE_EVENT_TRACER)
     if(EXECUTORCH_BUILD_DEVTOOLS)
@@ -137,6 +142,14 @@ if(NOT CMAKE_TOOLCHAIN_FILE MATCHES ".*(iOS|ios\.toolchain)\.cmake$")
       message(SEND_ERROR "Use of 'EXECUTORCH_ENABLE_EVENT_TRACER' requires 'EXECUTORCH_BUILD_DEVTOOLS' to be enabled.")
     endif()
   endif()
+
+
+  list(APPEND xnn_executor_runner_libs
+    executorch
+    executorch_core
+    extension_data_loader
+    extension_runner_util
+    pthreadpool)
 
   target_link_libraries(
     xnn_executor_runner gflags portable_ops_lib ${xnn_executor_runner_libs}
