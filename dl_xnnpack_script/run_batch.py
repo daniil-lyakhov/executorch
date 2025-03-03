@@ -3,27 +3,57 @@ import sys
 import pandas as pd
 from aot_xnnpack_compiler import main as aot_main
 
-
 MODELS = (
     (
         "torchvision",
-        ("mobilenet_v2", {}, {"fast_bias_correction": False}),
+        ("efficientnet_b0", {}, {}),
     ),
     (
         "torchvision",
-        ("mobilenet_v3_small", {}, {"fast_bias_correction": False}),
+        ("inception_v3", {}, {}),
     ),
-    (
+(
         "torchvision",
-        ("resnet18", {}, {}),
+        ("mnasnet1_3", {}, {}),
+    ),
+(
+        "torchvision",
+        ("regnet_x_32gf", {}, {}),
+    ),
+(
+        "torchvision",
+        ("wide_resnet101_2", {}, {}),
+    ),
+(
+        "torchvision",
+        ("wide_resnet50_2", {}, {}),
     ),
     (
         "torchvision",
         ("resnet50", {}, {}),
     ),
+(
+        "timm",
+        ("fbnetc_100.rmsp_in1k", {}, {}),
+    ),
+(
+        "timm",
+        ("densenetblur121d", {}, {}),
+    ),(
+        "timm",
+        ("res2net50_26w_4s", {}, {}),
+    ),
     (
-        "torchvision",
-        ("vit_b_16", {}, {"smooth_quant": True}),
+        "timm",
+        ("regnetz_b16", {}, {}),
+    ),
+    (
+        "timm",
+        ("dpn68", {}, {}),
+    ),
+(
+        "timm",
+        ("mixnet_l.ft_in1k", {}, {}),
     ),
 )
 
@@ -66,7 +96,7 @@ def main(dataset_path: str, path_to_runner: str):
     )
 
     print(df)
-    df.to_csv("result.csv")
+    df.to_csv("result_xnnpack.csv")
 
 
 if __name__ == "__main__":
