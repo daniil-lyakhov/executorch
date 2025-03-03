@@ -215,7 +215,6 @@ def main(
     dataset_path: str,
     device: str,
     batch_size: int,
-    quantization_flow: str,
     path_to_runner: str
 ):
     """
@@ -229,7 +228,6 @@ def main(
     :param dataset_path: Path to the dataset for calibration/validation.
     :param device: The device to run the model on (e.g., "cpu", "gpu").
     :param batch_size: Batch size for dataset loading.
-    :param quantization_flow: The quantization method to use.
     """
 
     # Load the selected model
@@ -294,6 +292,9 @@ def main(
         print("Start validation of the model:")
         acc_top1 = validate_model(model_file_name, calibration_dataset, path_to_runner)
         print(f"acc@1: {acc_top1}")
+    else:
+        acc_top1 = -1
+    return acc_top1
 
 
 if __name__ == "__main__":
@@ -337,15 +338,6 @@ if __name__ == "__main__":
         help="Target device for compiling the model (e.g., CPU, GPU). Default is CPU.",
     )
     parser.add_argument(
-        "--quantization_flow",
-        type=str,
-        choices=["pt2e", "nncf"],
-        default="nncf",
-        help="Select the quantization flow (nncf or pt2e):"
-        " pt2e is the default torch.ao quantization flow, while"
-        " nncf is a custom method with additional algorithms to improve model performance.",
-    )
-    parser.add_argument(
         "--path_to_runner",
         type=str,
         required=False,
@@ -366,6 +358,5 @@ if __name__ == "__main__":
         args.dataset,
         args.device,
         args.batch_size,
-        args.quantization_flow,
         args.path_to_runner,
     )
