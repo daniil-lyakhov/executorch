@@ -146,6 +146,8 @@ def quantize_model(model, calibration_dataset, default_subset_size =300):
     subset_size = (default_subset_size // batch_size) + int(
         default_subset_size % batch_size > 0
     )
+    
+    subset_size=1
 
     quantizer = XNNPACKQuantizer()
     # if we set is_per_channel to True, we also need to add out_variant of quantize_per_channel/dequantize_per_channel

@@ -72,10 +72,10 @@ def main(dataset_path: str, path_to_runner: str):
                     model_name=model_name,
                     input_shape=None,
                     quantize=quantize,
-                    validate=True,
+                    validate=False,
                     dataset_path=dataset_path,
                     path_to_runner=path_to_runner,
-                    batch_size=125,
+                    batch_size=1,
                     device="CPU",
                 )
                 print(30 * "*")
