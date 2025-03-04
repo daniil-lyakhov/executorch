@@ -137,7 +137,6 @@ def main(
     dataset_path: str,
     device: str,
     batch_size: int,
-    quantization_flow: str,
     quantizer_kwargs: dict = None,
     quantize_pt2e_kwargs: dict = None,
 ):
