@@ -15,11 +15,12 @@ option(EXECUTORCH_BUILD_EXTENSION_DATA_LOADER "" ON)
 option(EXECUTORCH_BUILD_EXTENSION_MODULE "" ON)
 option(EXECUTORCH_BUILD_EXTENSION_TENSOR "" ON)
 option(EXECUTORCH_BUILD_KERNELS_OPTIMIZED "" ON)
-option(EXECUTORCH_BUILD_XNNPACK "" ON) # Build with Xnnpack backend
+option(EXECUTORCH_BUILD_XNNPACK "" OFF) # Build with Xnnpack backend
+option(EXECUTORCH_BUILD_OPENVINO "" ON)
 
 # Include the executorch subdirectory.
 add_subdirectory(
-  ${CMAKE_CURRENT_SOURCE_DIR}/third-party/executorch
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../
   ${CMAKE_BINARY_DIR}/executorch
 )
 
@@ -31,5 +32,5 @@ target_link_libraries(
           extension_tensor # Provides the TensorPtr class
           optimized_native_cpu_ops_lib # Provides baseline cross-platform
                                        # kernels
-          xnnpack_backend # Provides the XNNPACK CPU acceleration backend
+          openvino_backend
 )
