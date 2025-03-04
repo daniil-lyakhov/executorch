@@ -35,9 +35,9 @@ def main():
     # The torch.no_grad() call tells PyTorch to exclude training-specific logic.
     with sdpa_kernel([SDPBackend.MATH]), torch.no_grad():
         m = export_for_training(
-            model, example_inputs, dynamic_shapes=dynamic_shape
+            model, example_inputs
         ).module()
-        traced_model = export(m, example_inputs, dynamic_shapes=dynamic_shape, strict=True)
+        traced_model = export(m, example_inputs, strict=True)
 
     # Convert the model into a runnable ExecuTorch program.
     # To be further lowered to Xnnpack backend, `traced_model` needs xnnpack-specific edge compile config
@@ -58,7 +58,7 @@ def main():
 
 
     # Save the Xnnpack-delegated ExecuTorch program to a file.
-    with open("nanogpt_ov.pte", "wb") as file:
+    with open("nanogpt.pte", "wb") as file:
         file.write(exec_prog.buffer)
 
 with nncf.torch.disable_patching():
