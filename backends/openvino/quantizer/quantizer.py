@@ -352,6 +352,8 @@ class OpenVINOQuantizer(Quantizer):
 def quantize_model(
     captured_model: torch.fx.GraphModule,
     calibration_dataset: torch.utils.data.DataLoader,
+    quantizer_kwargs,
+    quantize_pt2e_kwargs,
 ) -> torch.fx.GraphModule:
     """
     Quantizes a model using either NNCF-based or PTQ-based quantization.
@@ -360,7 +362,7 @@ def quantize_model(
     :param calibration_dataset: A DataLoader containing calibration data for quantization.
     :return: The quantized model as a torch.fx.GraphModule.
     """
-    quantizer = OpenVINOQuantizer()
+    quantizer = OpenVINOQuantizer(**quantizer_kwargs)
 
     print("PTQ: Quantize the model")
     default_subset_size = 300
@@ -378,5 +380,6 @@ def quantize_model(
         subset_size=subset_size,
         calibration_dataset=nncf.Dataset(calibration_dataset, transform_func=transform),
         fold_quantize=False,
+        **quantize_pt2e_kwargs,
     )
     return quantized_model

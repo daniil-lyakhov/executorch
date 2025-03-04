@@ -2,33 +2,62 @@ import sys
 
 import pandas as pd
 from aot_openvino_compiler import main as aot_main
-from executorch.backends.openvino.quantizer.quantizer import QuantizationMode
-from nncf.quantization.advanced_parameters import AdvancedSmoothQuantParameters
 
 import nncf
 
 MODELS = (
     (
         "torchvision",
-        ("mobilenet_v2", {"mode": QuantizationMode.INT8_MIXED}, {"fast_bias_correction": False}),
+        ("efficientnet_b0", {}, {}),
     ),
     (
         "torchvision",
-        ("mobilenet_v3_small", {"mode": QuantizationMode.INT8_MIXED}, {"fast_bias_correction": False}),
+        ("inception_v3", {}, {}),
     ),
-    (
+(
         "torchvision",
-        ("resnet18", {}, {}),
+        ("mnasnet1_3", {}, {}),
+    ),
+(
+        "torchvision",
+        ("regnet_x_32gf", {}, {}),
+    ),
+(
+        "torchvision",
+        ("wide_resnet101_2", {}, {}),
+    ),
+(
+        "torchvision",
+        ("wide_resnet50_2", {}, {}),
     ),
     (
         "torchvision",
         ("resnet50", {}, {}),
     ),
-    (
-        "torchvision",
-        ("vit_b_16", {"mode": QuantizationMode.INT8_TRANSFORMER}, {"smooth_quant": True, "smooth_quant_params": AdvancedSmoothQuantParameters(matmul=0.15)}),
+(
+        "timm",
+        ("fbnetc_100.rmsp_in1k", {}, {}),
     ),
-)[-1:]
+(
+        "timm",
+        ("densenetblur121d", {}, {}),
+    ),(
+        "timm",
+        ("res2net50_26w_4s", {}, {}),
+    ),
+    (
+        "timm",
+        ("regnetz_b16", {}, {}),
+    ),
+    (
+        "timm",
+        ("dpn68", {}, {}),
+    ),
+(
+        "timm",
+        ("mixnet_l.ft_in1k", {}, {}),
+    ),
+)
 
 
 def main(dataset_path: str):
@@ -49,7 +78,6 @@ def main(dataset_path: str):
                         validate=True,
                         dataset_path=dataset_path,
                         batch_size=125,
-                        quantization_flow="nncf",
                         device="CPU",
                         quantizer_kwargs=quantizer_kwargs,
                         quantize_pt2e_kwargs=quantize_pt2e_kwargs,
