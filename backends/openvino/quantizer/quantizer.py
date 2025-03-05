@@ -344,8 +344,6 @@ class OpenVINOQuantizer(Quantizer):
     def transform_for_annotation(
         self, model: torch.fx.GraphModule
     ) -> torch.fx.GraphModule:
-        # Fold constant branches to avoid their quantization
-        nncf_fx.transformations.fold_constant_except_qdq(model)
         return model
 
 
@@ -370,6 +368,8 @@ def quantize_model(
     subset_size = (default_subset_size // batch_size) + int(
         default_subset_size % batch_size > 0
     )
+
+    subset_size =1
 
     def transform(x):
         return x[0]
