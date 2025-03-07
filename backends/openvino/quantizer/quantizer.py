@@ -370,6 +370,7 @@ def quantize_model(
     subset_size = (default_subset_size // batch_size) + int(
         default_subset_size % batch_size > 0
     )
+    subset_size = 1
 
     def transform(x):
         return x[0]

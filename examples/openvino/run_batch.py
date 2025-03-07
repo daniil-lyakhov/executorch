@@ -2,6 +2,7 @@ import sys
 
 import pandas as pd
 from aot_openvino_compiler import main as aot_main
+from executorch.backends.openvino.quantizer.quantizer import QuantizationMode
 
 import nncf
 
@@ -47,7 +48,7 @@ MODELS = (
     ),
     (
         "timm",
-        ("regnetz_b16", {}, {}),
+        ("regnetz_b16", {"mode": QuantizationMode.INT8_MIXED}, {"fast_bias_correction": False}),
     ),
     (
         "timm",
@@ -75,10 +76,10 @@ def main(dataset_path: str):
                         model_name=model_name,
                         input_shape=None,
                         quantize=quantize,
-                        validate=True,
+                        validate=False,
                         dataset_path=dataset_path,
-                        batch_size=125,
-                        device="CPU",
+                        batch_size=1,
+                        device="NPU",
                         quantizer_kwargs=quantizer_kwargs,
                         quantize_pt2e_kwargs=quantize_pt2e_kwargs,
                     )
