@@ -232,7 +232,7 @@ def main(  # noqa: C901
         msg = "Input shape must be a list or tuple."
         raise ValueError(msg)
     # Provide input
-    example_args = (torch.randn(*input_shape),)
+    example_args = (torch.randn(*input_shape).to(torch.int),)
 
     # Export the model to the aten dialect
     aten_dialect: ExportedProgram = export(model, example_args)
