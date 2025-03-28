@@ -6,7 +6,16 @@
 #include <torch/torch.h>
 #include <torch/script.h>
 #include <random>
-//#include <memory>
+
+#include <executorch/extension/data_loader/file_data_loader.h>
+#include <executorch/extension/evalue_util/print_evalue.h>
+#include <executorch/extension/runner_util/inputs.h>
+#include <executorch/runtime/core/event_tracer.h>
+#include <executorch/runtime/executor/method.h>
+#include <executorch/runtime/executor/program.h>
+#include <executorch/runtime/platform/log.h>
+#include <executorch/runtime/platform/platform.h>
+#include <executorch/runtime/platform/runtime.h>
 
 using torch::indexing::Slice;
 using torch::indexing::None;
