@@ -1,0 +1,2 @@
+cmake -DCMAKE_INSTALL_PREFIX=cmake-out -DCMAKE_BUILD_TYPE=Release -DEXECUTORCH_BUILD_XNNPACK=ON -DPYTHON_EXECUTABLE=python -Bcmake-out .
+cmake --build cmake-out -j9 --target install --config Release
