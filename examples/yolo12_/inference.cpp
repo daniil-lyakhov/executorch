@@ -1,4 +1,5 @@
 #include "inference.h"
+#include <csignal>
 
 Inference::Inference(const std::string &onnxModelPath, const cv::Size &modelInputShape, const std::string &classesTxtFile, const bool &runWithCuda)
 {
@@ -185,11 +186,11 @@ std::vector<Detection> Inference::runInference(const cv::Mat &input)
         "The given method has too many inputs: %ld, 1 expected.",
         method->inputs_size()
     );
-    ET_CHECK_MSG(
-        method->outputs_size() == 1,
-        "The given method has too many outputs: %ld, 1 expected.",
-        method->outputs_size()
-    );
+    //ET_CHECK_MSG(
+    //    method->outputs_size() == 1,
+    //    "The given method has too many outputs: %ld, 1 expected.",
+    //    method->outputs_size()
+    //);
     std::vector<EValue> inputs(method->inputs_size());
     ET_LOG(Info, "Number of input layers: %zu", inputs.size());
 
@@ -210,9 +211,13 @@ std::vector<Detection> Inference::runInference(const cv::Mat &input)
     ET_LOG(Info, "%zu outputs: ", ex_outputs.size());
     status = method->get_outputs(ex_outputs.data(), ex_outputs.size());
     ET_CHECK(status == Error::Ok);
+    //std::raise(SIGINT);
 
-    const auto output_size = ex_outputs[0].toTensor().sizes();
-    const auto mat_output = cv::Mat(output_size[0], output_size[1], CV_32FC1, ex_outputs[0].toTensor().data_ptr());
+    //const auto output_size = ex_outputs[0].toTensor().sizes();
+    //const auto mat_output = cv::Mat(output_size[0], output_size[1], CV_32FC1, ex_outputs[0].toTensor().data_ptr());
+    const auto t = ex_outputs[0].toTensor();
+    // Copy etensor to a Mat
+    const auto mat_output = cv::Mat(t.dim(), t.sizes().data(), CV_32FC1, t.data_ptr());
     auto outputs = std::vector<cv::Mat>();
     outputs.push_back(mat_output);
     //std::vector<cv::Mat> outputs;

@@ -175,7 +175,7 @@ torch::Tensor non_max_suppression(torch::Tensor& prediction, float conf_thres = 
 
     std::vector<torch::Tensor> output;
     for (int i = 0; i < bs; i++) {
-        output.push_back(torch::zeros({0, 6 + nm}, prediction.device()));
+        output.push_back(torch::zeros({0, 6 + nm}));
     }
 
     for (int xi = 0; xi < prediction.size(0); xi++) {
@@ -239,12 +239,13 @@ void draw_detected_object(cv::Mat &frame, const int class_id, const std::string 
 
 	// Put the class label and confidence text above the bounding box
 	cv::putText(frame, classString, cv::Point(box.x + 5, box.y - 10), cv::FONT_HERSHEY_DUPLEX, 0.75, cv::Scalar(0, 0, 0), 2, 0);
+
 }
 
 void set_method_input(
     Result<Method> &method, std::vector<EValue> &model_inputs,
     const  torch::Tensor input_tensor) {
-    const MethodMeta method_meta = method->method_meta();
+   const MethodMeta method_meta = method->method_meta();
 
     ET_CHECK_MSG(
         method->inputs_size() == 1,
@@ -293,7 +294,7 @@ int main() {
     std::cout << "AAAAA";
     std::cout.flush();
 
-    torch::Device device(torch::cuda::is_available() ? torch::kCUDA :torch::kCPU);
+    //torch::Device device(torch::cuda::is_available() ? torch::kCUDA :torch::kCPU);
 
     // Note that in this example the classes are hard-coded
     std::vector<std::string> classes {"person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light", "fire hydrant",
@@ -398,9 +399,13 @@ int main() {
         // the method can mutate the memory-planned buffers, so the method should only
         // be used by a single thread at at time, but it can be reused.
         //
+        std::cout << "BBBBB";
+        std::cout.flush();
         EventTraceManager tracer;
         Result<Method> method = program->load_method(
             method_name, &memory_manager, tracer.get_event_tracer());
+        std::cout << "DDDD" << std::endl << (uint32_t)method.error();
+        std::cout.flush();
         ET_CHECK_MSG(
             method.ok(),
             "Loading of method %s failed with status 0x%" PRIx32,
@@ -439,7 +444,8 @@ int main() {
         letterbox(image, input_image, {640, 640});
         cv::cvtColor(input_image, input_image, cv::COLOR_BGR2RGB);
 
-        torch::Tensor image_tensor = torch::from_blob(input_image.data, {input_image.rows, input_image.cols, 3}, torch::kByte).to(device);
+        //torch::Tensor image_tensor = torch::from_blob(input_image.data, {input_image.rows, input_image.cols, 3}, torch::kByte).to(device);
+        torch::Tensor image_tensor = torch::from_blob(input_image.data, {input_image.rows, input_image.cols, 3}, torch::kByte);
         image_tensor = image_tensor.toType(torch::kFloat32).div(255);
         image_tensor = image_tensor.permute({2, 0, 1});
         image_tensor = image_tensor.unsqueeze(0);

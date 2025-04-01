@@ -44,6 +44,7 @@ message("${TORCH_INCLUDE_DIRS}")
 find_library(OPENVINO_BACKEND openvino_backend  REQUIRED)
 find_library(PORTABLE_OPS_LIB portable_ops_lib  REQUIRED)
 find_library(EXECUTORCH_CORE executorch_core REQUIRED)
+find_library(EXECUTORCH executorch REQUIRED)
 find_library(XNNPACK_BACKEND xnnpack_backend REQUIRED)
 
 

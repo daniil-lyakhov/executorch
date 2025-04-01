@@ -35,6 +35,7 @@ from transformers import AutoModel
 
 
 BACKEND = "OPENVINO"
+BACKEND = "XNNPACK"
 
 def load_calibration_dataset(
     dataset_path: str,
@@ -200,6 +201,7 @@ def main(  # noqa: C901
     from ultralytics import YOLO
     import numpy as np
     model_name = "yolo12s"
+    model_name = "yolov8s"
     model = YOLO(model_name)
 
     # Setup pre-processing
@@ -207,6 +209,7 @@ def main(  # noqa: C901
     np_dummy_tensor = np.ones((height, width, 3))
     model.predict(np_dummy_tensor, imgsz=((height, width)), device="cpu")
 
+    breakpoint()
     pt_model = model.model.to(torch.device("cpu"))
 
 
@@ -216,6 +219,10 @@ def main(  # noqa: C901
 
     with torch.no_grad():
         aten_dialect = torch.export.export(pt_model, args=(transform_fn(np_dummy_tensor),))
+
+    pre_frame = transform_fn(np_dummy_tensor)
+    results = pt_model(pre_frame)
+    results = model.predictor.postprocess(results, pre_frame, [np_dummy_tensor])
 
     calibration_dataset: Optional[torch.utils.data.DataLoader] = None
 

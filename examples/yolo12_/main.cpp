@@ -4,6 +4,7 @@
 
 #include <opencv2/opencv.hpp>
 
+#include <csignal>
 #include "inference.h"
 
 using namespace std;
@@ -65,8 +66,9 @@ int main(int argc, char **argv)
         // This is only for preview purposes
         float scale = 0.8;
         cv::resize(frame, frame, cv::Size(frame.cols*scale, frame.rows*scale));
-        cv::imshow("Inference", frame);
-
-        cv::waitKey(-1);
+        //std::raise(SIGINT);
+        cv::imwrite("out_4125_" + std::to_string(i) +".jpg", frame);
+        //cv::imshow("Inference", frame);
+        //cv::waitKey(-1);
     }
 }
