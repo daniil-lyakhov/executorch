@@ -13,18 +13,43 @@ find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 # !OpenCV
 
-find_package(Torch REQUIRED)
-
-find_library(OPENVINO_BACKEND openvino_backend REQUIRED)
-find_library(PORTABLE_OPS_LIB portable_ops_lib REQUIRED)
-find_library(EXECUTORCH_CORE executorch_core REQUIRED)
-find_library(XNNPACK_BACKEND xnnpack_backend REQUIRED)
-
-include_directories(${TORCH_INCLUDE_DIRS})
-
-if(NOT EXECUTORCH_ROOT)
-  set(EXECUTORCH_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+if(NOT PYTHON_EXECUTABLE)
+  set(PYTHON_EXECUTABLE python3)
 endif()
+
+set(EXECUTORCH_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+set(TORCH_ROOT ${EXECUTORCH_ROOT}/third-party/pytorch)
+
+include(${EXECUTORCH_ROOT}/tools/cmake/Utils.cmake)
+
+# Let files say "include <executorch/path/to/header.h>".
+set(_common_include_directories ${EXECUTORCH_ROOT}/..)
+
+# find `executorch` libraries Same as for gflags
+set(executorch_DIR ${CMAKE_CURRENT_BINARY_DIR}/../../lib/cmake/ExecuTorch)
+find_package(executorch CONFIG REQUIRED)
+target_link_options_shared_lib(executorch)
+
+set(link_libraries gflags)
+list(APPEND link_libraries portable_ops_lib portable_kernels)
+target_link_options_shared_lib(portable_ops_lib)
+
+set(xnnpack_backend_libs xnnpack_backend XNNPACK microkernels-prod)
+list(APPEND link_libraries ${xnnpack_backend_libs})
+target_link_options_shared_lib(xnnpack_backend)
+
+
+list(APPEND link_libraries extension_threadpool pthreadpool)
+list(APPEND _common_include_directories
+     ${XNNPACK_ROOT}/third-party/pthreadpool/include
+)
+
+list(APPEND link_libraries extension_threadpool cpuinfo)
+list(APPEND _common_include_directories
+     ${XNNPACK_ROOT}/third-party/cpuinfo/include
+)
+
+message(STATUS ${link_libraries})
 
 set(PROJECT_SOURCES
     main.cpp
@@ -37,5 +62,8 @@ set(PROJECT_SOURCES
 )
 
 add_executable(Yolov8CPPInference ${PROJECT_SOURCES})
-target_link_libraries(Yolov8CPPInference ${OpenCV_LIBS} ${OPENVINO_BACKEND} ${PORTABLE_OPS_LIB} gflags ${EXECUTORCH_CORE} ${XNNPACK_BACKEND})
-target_include_directories(Yolov8CPPInference PUBLIC ${EXECUTORCH_ROOT}/..)
+target_link_libraries(Yolov8CPPInference PUBLIC ${link_libraries} ${OpenCV_LIBS} executorch_core)
+
+find_package(Threads REQUIRED)
+target_link_libraries(Yolov8CPPInference PRIVATE Threads::Threads)
+target_include_directories(Yolov8CPPInference PUBLIC ${_common_include_directories})

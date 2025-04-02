@@ -159,29 +159,7 @@ if(NOT CMAKE_TOOLCHAIN_FILE MATCHES ".*(iOS|ios\.toolchain)\.cmake$")
   # be at ${CMAKE_BINARY_DIR}/backends/xnnpack
   #
   list(TRANSFORM _xnn_executor_runner__srcs PREPEND "${EXECUTORCH_ROOT}/")
-
-  #add_executable(xnn_executor_runner ${_xnn_executor_runner__srcs})
-  # Add openCV
-  find_package(OpenCV REQUIRED)
-
-  message(STATUS "OpenCV library status:")
-  message(STATUS "    config: ${OpenCV_DIR}")
-  message(STATUS "    version: ${OpenCV_VERSION}")
-  message(STATUS "    libraries: ${OpenCV_LIBS}")
-  message(STATUS "    include path: ${OpenCV_INCLUDE_DIRS}")
-
-  include_directories(${OpenCV_INCLUDE_DIRS})
-  add_executable(xnn_executor_runner
-    ${EXECUTORCH_ROOT}/examples/yolo12_/main.cpp
-    ${EXECUTORCH_ROOT}/examples/yolo12_/inference.h
-    ${EXECUTORCH_ROOT}/examples/yolo12_/inference.cpp
-    #${EXECUTORCH_ROOT}/examples/yolo12_torchlib/main.cc
-    ${EXECUTORCH_ROOT}/extension/data_loader/file_data_loader.cpp
-    ${EXECUTORCH_ROOT}/extension/evalue_util/print_evalue.cpp
-    ${EXECUTORCH_ROOT}/extension/runner_util/inputs.cpp
-    ${EXECUTORCH_ROOT}/extension/runner_util/inputs_portable.cpp
-  )
-  list(APPEND xnn_executor_runner_libs ${OpenCV_LIBS})
+  add_executable(xnn_executor_runner ${_xnn_executor_runner__srcs})
 
   if(EXECUTORCH_ENABLE_EVENT_TRACER)
     if(EXECUTORCH_BUILD_DEVTOOLS)
