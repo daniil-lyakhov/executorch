@@ -4,7 +4,6 @@
 
 #include <opencv2/opencv.hpp>
 
-#include <csignal>
 #include "inference.h"
 
 using namespace std;
@@ -24,10 +23,8 @@ int main(int argc, char **argv)
     // To run Inference with yolov8/yolov5 (ONNX)
     //
 
-    // Note that in this example the classes are hard-coded and 'classes.txt' is a place holder.
-    std::cout<<"AAAA";
-    std::cout.flush();
-    Inference inf(projectBasePath + "/yolov8s.pte", cv::Size(640, 640), "classes.txt", runOnGPU);
+    executorch::runtime::runtime_init();
+    YoloInference inf(projectBasePath + "/yolov8s.pte", cv::Size(640, 640));
 
     std::vector<std::string> imageNames;
     imageNames.push_back(projectBasePath + "/ultralytics/assets/bus.jpg");

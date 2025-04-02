@@ -1,15 +1,4 @@
 #include "inference.h"
-#include <csignal>
-
-Inference::Inference(const std::string &onnxModelPath, const cv::Size &modelInputShape, const std::string &classesTxtFile, const bool &runWithCuda)
-{
-    modelPath = onnxModelPath;
-    modelShape = modelInputShape;
-    classesPath = classesTxtFile;
-    cudaEnabled = runWithCuda;
-
-    // loadClassesFromFile(); The classes are hard-coded for this example
-}
 
 class EventTraceManager {
  public:
@@ -33,67 +22,38 @@ class EventTraceManager {
   std::shared_ptr<EventTracer> event_tracer_ptr_;
 };
 
-void set_method_input(
-    Result<Method> &method, std::vector<EValue> &model_inputs,
-    const cv::Mat input_tensor) {
-    const MethodMeta method_meta = method->method_meta();
-
+static Program create_program(const std::string &exported_model_path){
+    Result<FileDataLoader> loader_result = FileDataLoader::from(exported_model_path.c_str());
     ET_CHECK_MSG(
-        method->inputs_size() == 1,
-        "The given method has too many inputs: %ld",
-        method->inputs_size()
-    );
-
-    const int input_index = 0;
-    Result<TensorInfo> tensor_meta =
-        method_meta.input_tensor_meta(input_index);
-    auto input_data_ptr = model_inputs[input_index].toTensor().data_ptr<uchar>();
-    memcpy(static_cast<uchar *>(input_data_ptr), static_cast<uchar *>(input_tensor.data), tensor_meta->nbytes());
-}
-
-std::vector<Detection> Inference::runInference(const cv::Mat &input)
-{
-
-    cv::Mat modelInput = input;
-    int pad_x, pad_y;
-    float scale;
-    if (letterBoxForSquare && modelShape.width == modelShape.height)
-        modelInput = formatToSquare(modelInput, &pad_x, &pad_y, &scale);
-
-    cv::Mat blob;
-    cv::dnn::blobFromImage(modelInput, blob, 1.0/255.0, modelShape, cv::Scalar(), true, false);
-
-
-    executorch::runtime::runtime_init();
-    Result<FileDataLoader> loader = FileDataLoader::from(this->modelPath.c_str());
-    ET_CHECK_MSG(
-        loader.ok(),
+        loader_result.ok(),
         "FileDataLoader::from() failed: 0x%" PRIx32,
-        (uint32_t)loader.error());
+        (uint32_t)loader_result.error());
 
     // Parse the program file. This is immutable, and can also be reused between
     // multiple execution invocations across multiple threads.
-    Result<Program> program = Program::load(&loader.get());
-    if (!program.ok()) {
-      ET_LOG(Error, "Failed to parse model file %s", this->modelPath.c_str());
-      return std::vector<Detection>();
+    Result<Program> program_result = Program::load(&loader_result.get());
+    if (!program_result.ok()) {
+      ET_LOG(Error, "Failed to parse model file %s", exported_model_path.c_str());
     }
+    return std::move(program_result.get());
+}
+
+YoloInference::YoloInference(const std::string &exported_model_path, const cv::Size &input_shape) :
+Program_(create_program(exported_model_path))
+{
+    modelPath = exported_model_path;
+    modelShape = input_shape;
 
     // Use the first method in the program.
-    const char* method_name = nullptr;
-    {
-      const auto method_name_result = program->get_method_name(0);
-      ET_CHECK_MSG(method_name_result.ok(), "Program has no methods");
-      method_name = *method_name_result;
-    }
-    ET_LOG(Info, "Using method %s", method_name);
+    MethodName  = std::string(Program_.get_method_name(0));
+    ET_LOG(Info, "Using method %s", MethodName.c_str());
 
     // MethodMeta describes the memory requirements of the method.
-    Result<MethodMeta> method_meta = program->method_meta(method_name);
+    Result<MethodMeta> method_meta = Program_.method_meta(MethodName.c_str());
     ET_CHECK_MSG(
         method_meta.ok(),
         "Failed to get method_meta for %s: 0x%" PRIx32,
-        method_name,
+        MethodName.c_str(),
         (uint32_t)method_meta.error());
 
     //
@@ -115,14 +75,12 @@ std::vector<Detection> Inference::runInference(const cv::Mat &input)
     // MallocMemoryAllocator).
     //
     // In this example we use a statically allocated memory pool.
-    static uint8_t method_allocator_pool[4 * 1024U * 1024U]; // 4 MB
-    static uint8_t temp_allocator_pool[1024U * 1024U];
-    MemoryAllocator method_allocator{
-        MemoryAllocator(sizeof(method_allocator_pool), method_allocator_pool)};
+    const auto method_allocator = {
+        MemoryAllocator(sizeof(MethodAllocatorPool), MethodAllocatorPool)};
 
     // Temporary memory required by kernels
-    MemoryAllocator temp_allocator{
-        MemoryAllocator(sizeof(temp_allocator_pool), temp_allocator_pool)};
+    const auto temp_allocator = {
+        MemoryAllocator(sizeof(TMPAllocatorPool), TMPAllocatorPool)};
 
     // The memory-planned buffers will back the mutable tensors used by the
     // method. The sizes of these buffers were determined ahead of time during the
@@ -132,19 +90,17 @@ std::vector<Detection> Inference::runInference(const cv::Mat &input)
     // mobile environments will only have a single buffer. Some embedded
     // environments may have more than one for, e.g., slow/large DRAM and
     // fast/small SRAM, or for memory associated with particular cores.
-    std::vector<std::unique_ptr<uint8_t[]>> planned_buffers; // Owns the memory
-    std::vector<Span<uint8_t>> planned_spans; // Passed to the allocator
     size_t num_memory_planned_buffers = method_meta->num_memory_planned_buffers();
     for (size_t id = 0; id < num_memory_planned_buffers; ++id) {
       // .get() will always succeed because id < num_memory_planned_buffers.
       size_t buffer_size =
           static_cast<size_t>(method_meta->memory_planned_buffer_size(id).get());
       ET_LOG(Info, "Setting up planned buffer %zu, size %zu.", id, buffer_size);
-      planned_buffers.push_back(std::make_unique<uint8_t[]>(buffer_size));
-      planned_spans.push_back({planned_buffers.back().get(), buffer_size});
+      PlannedBuffers.push_back(std::make_unique<uint8_t[]>(buffer_size));
+      PlannedSpans.push_back({PlannedBuffers.back().get(), buffer_size});
     }
-    HierarchicalAllocator planned_memory(
-        {planned_spans.data(), planned_spans.size()});
+    const auto planned_memory = HierarchicalAllocator(
+        {PlannedSpans.data(), PlannedSpans.size()});
 
     // Assemble all of the allocators into the MemoryManager that the Executor
     // will use.
@@ -156,72 +112,89 @@ std::vector<Detection> Inference::runInference(const cv::Mat &input)
     // the method can mutate the memory-planned buffers, so the method should only
     // be used by a single thread at at time, but it can be reused.
     //
-    std::cout <<"cccc" << std::endl << std::endl;
-    std::cout.flush();
     EventTraceManager tracer;
-    Result<Method> method = program->load_method(
-        method_name, &memory_manager, tracer.get_event_tracer());
-    std::cout <<"dddd" << std::endl << (uint32_t)method.error() <<std::endl;
-    std::cout.flush();
+    const auto method_result = Program_.load_method(
+        MethodName.c_str(), &memory_manager, tracer.get_event_tracer());
     ET_CHECK_MSG(
-        method.ok(),
+        method_result.ok(),
         "Loading of method %s failed with status 0x%" PRIx32,
-        method_name,
-        (uint32_t)method.error());
+        MethodName.c_str(),
+        (uint32_t)method_result.error());
+    Method_ = &method_result;
     ET_LOG(Info, "Method loaded.");
-    std::cout <<"BBBBBBBBBB" << std::endl << modelPath <<std::endl;
-    std::cout.flush();
 
-    et_timestamp_t time_spent_executing = 0;
-    // Run the model.
     ET_LOG(Debug, "Preparing inputs.");
-    auto method_inputs = executorch::extension::prepare_input_tensors(*method);
+    const auto method_inputs = executorch::extension::prepare_input_tensors(Method_);
     ET_CHECK_MSG(
         method_inputs.ok(),
         "Could not prepare inputs: 0x%" PRIx32,
         (uint32_t)method_inputs.error());
     ET_LOG(Debug, "Inputs prepared.");
+    const auto inputs_size = Method_.inputs_size();
+    ET_CHECK_MSG(
+        inputs_size == 1,
+        "The given method has too many inputs: %ld, 1 expected.",
+        inputs_size
+    );
+    ET_LOG(Info, "Number of input layers: %zu", inputs_size);
+}
+
+
+
+void set_method_input(
+    Method *method, std::vector<EValue> &model_inputs,
+    const cv::Mat input_tensor) {
+    const MethodMeta method_meta = method->method_meta();
+
     ET_CHECK_MSG(
         method->inputs_size() == 1,
-        "The given method has too many inputs: %ld, 1 expected.",
+        "The given method has too many inputs: %ld",
         method->inputs_size()
     );
-    //ET_CHECK_MSG(
-    //    method->outputs_size() == 1,
-    //    "The given method has too many outputs: %ld, 1 expected.",
-    //    method->outputs_size()
-    //);
-    std::vector<EValue> inputs(method->inputs_size());
-    ET_LOG(Info, "Number of input layers: %zu", inputs.size());
 
-    Error status = method->get_inputs(inputs.data(), inputs.size());
+    const int input_index = 0;
+    Result<TensorInfo> tensor_meta =
+        method_meta.input_tensor_meta(input_index);
+    auto input_data_ptr = model_inputs[input_index].toTensor().data_ptr<uchar>();
+    memcpy(static_cast<uchar *>(input_data_ptr), static_cast<uchar *>(input_tensor.data), tensor_meta->nbytes());
+}
+
+std::vector<Detection> YoloInference::runInference(const cv::Mat &input)
+{
+    cv::Mat modelInput = input;
+    int pad_x, pad_y;
+    float scale;
+    if (letterBoxForSquare && modelShape.width == modelShape.height)
+        modelInput = formatToSquare(modelInput, &pad_x, &pad_y, &scale);
+
+    cv::Mat blob;
+    cv::dnn::blobFromImage(modelInput, blob, 1.0/255.0, modelShape, cv::Scalar(), true, false);
+
+    std::vector<EValue> inputs(Method_.inputs_size());
+
+    Error status = Method_.get_inputs(inputs.data(), inputs.size());
     ET_CHECK(status == Error::Ok);
 
-    set_method_input(method, inputs, blob);
+    set_method_input(&Method_, inputs, blob);
 
-    status = method->execute();
+    status = Method_.execute();
 
     ET_CHECK_MSG(
         status == Error::Ok,
         "Execution of method %s failed with status 0x%" PRIx32,
-        method_name,
+        MethodName.c_str(),
         (uint32_t)status);
 
-    std::vector<EValue> ex_outputs(method->outputs_size());
+    std::vector<EValue> ex_outputs(Method_.outputs_size());
     ET_LOG(Info, "%zu outputs: ", ex_outputs.size());
-    status = method->get_outputs(ex_outputs.data(), ex_outputs.size());
+    status = Method_.get_outputs(ex_outputs.data(), ex_outputs.size());
     ET_CHECK(status == Error::Ok);
-    //std::raise(SIGINT);
 
-    //const auto output_size = ex_outputs[0].toTensor().sizes();
-    //const auto mat_output = cv::Mat(output_size[0], output_size[1], CV_32FC1, ex_outputs[0].toTensor().data_ptr());
     const auto t = ex_outputs[0].toTensor();
-    // Copy etensor to a Mat
+    // Copy the etensor to a Mat
     const auto mat_output = cv::Mat(t.dim(), t.sizes().data(), CV_32FC1, t.data_ptr());
     auto outputs = std::vector<cv::Mat>();
     outputs.push_back(mat_output);
-    //std::vector<cv::Mat> outputs;
-    //net.forward(outputs, net.getUnconnectedOutLayersNames());
 
     int rows = outputs[0].size[1];
     int dimensions = outputs[0].size[2];
@@ -341,36 +314,8 @@ std::vector<Detection> Inference::runInference(const cv::Mat &input)
     return detections;
 }
 
-void Inference::loadClassesFromFile()
-{
-    std::ifstream inputFile(classesPath);
-    if (inputFile.is_open())
-    {
-        std::string classLine;
-        while (std::getline(inputFile, classLine))
-            classes.push_back(classLine);
-        inputFile.close();
-    }
-}
 
-void Inference::loadOnnxNetwork()
-{
-    net = cv::dnn::readNetFromONNX(modelPath);
-    if (cudaEnabled)
-    {
-        std::cout << "\nRunning on CUDA" << std::endl;
-        net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
-        net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
-    }
-    else
-    {
-        std::cout << "\nRunning on CPU" << std::endl;
-        net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-        net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
-    }
-}
-
-cv::Mat Inference::formatToSquare(const cv::Mat &source, int *pad_x, int *pad_y, float *scale)
+cv::Mat YoloInference::formatToSquare(const cv::Mat &source, int *pad_x, int *pad_y, float *scale)
 {
     int col = source.cols;
     int row = source.rows;

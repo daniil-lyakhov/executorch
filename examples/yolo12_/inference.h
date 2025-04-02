@@ -24,6 +24,7 @@
 
 
 using executorch::extension::FileDataLoader;
+using executorch::extension::BufferCleanup;
 using executorch::runtime::Error;
 using executorch::runtime::EValue;
 using executorch::runtime::EventTracer;
@@ -46,32 +47,36 @@ struct Detection
     cv::Rect box{};
 };
 
-class Inference
+class YoloInference
 {
 public:
-    Inference(const std::string &onnxModelPath, const cv::Size &modelInputShape = {640, 640}, const std::string &classesTxtFile = "", const bool &runWithCuda = true);
+    YoloInference(const std::string &exported_model_path, const cv::Size &input_shape = {640, 640});
     std::vector<Detection> runInference(const cv::Mat &input);
 
 private:
-    void loadClassesFromFile();
-    void loadOnnxNetwork();
     cv::Mat formatToSquare(const cv::Mat &source, int *pad_x, int *pad_y, float *scale);
 
     std::string modelPath{};
     std::string classesPath{};
-    bool cudaEnabled{};
 
     std::vector<std::string> classes{"person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush"};
 
     cv::Size2f modelShape{};
+
+    Program Program_;
+    Method Method_;
+    std::string MethodName;
+
+    static uint8_t MethodAllocatorPool[4 * 1024U * 1024U]; // 4 MB
+    static uint8_t TMPAllocatorPool[1024U * 1024U];
+    std::vector<std::unique_ptr<uint8_t[]>> PlannedBuffers; // Owns the memory
+    std::vector<Span<uint8_t>> PlannedSpans; // Passed to the allocator
 
     float modelConfidenceThreshold {0.25};
     float modelScoreThreshold      {0.45};
     float modelNMSThreshold        {0.50};
 
     bool letterBoxForSquare = true;
-
-    cv::dnn::Net net;
 };
 
 #endif // INFERENCE_H
