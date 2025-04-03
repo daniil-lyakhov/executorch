@@ -144,9 +144,7 @@ std::vector<Detection> infer_yolo_once(
       nms_result);
 
   std::vector<Detection> detections{};
-  for (unsigned long i = 0; i < nms_result.size(); ++i) {
-    int idx = nms_result[i];
-
+  for (auto& idx : nms_result) {
     Detection result;
     result.class_id = class_ids[idx];
     result.confidence = confidences[idx];

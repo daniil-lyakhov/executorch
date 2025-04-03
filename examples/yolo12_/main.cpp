@@ -1,5 +1,7 @@
 #include "inference.h"
 
+#include <gflags/gflags.h>
+
 void draw_detection(cv::Mat& frame, const Detection detection);
 
 DetectionConfig DEFAULT_YOLO_CONFIG = {
@@ -33,12 +35,20 @@ DetectionConfig DEFAULT_YOLO_CONFIG = {
     0.45,
     0.50};
 
-int main(int argc, char** argv) {
-  std::string projectBasePath =
-      "/home/dlyakhov/Projects/ultralytics"; // Set your ultralytics base path
+DEFINE_string(
+    model_path,
+    "model.pte",
+    "Model serialized in flatbuffer format.");
 
+DEFINE_string(input_path, "input.jpg", "Path to the input image");
+
+DEFINE_string(output_path, "output.jpg", "Path to the output image");
+
+int main(int argc, char** argv) {
   executorch::runtime::runtime_init();
-  Module yolo_module(projectBasePath + "/yolov8s.pte");
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  Module yolo_module(FLAGS_model_path);
 
   auto error = yolo_module.load();
   // TODO: enable
@@ -52,9 +62,7 @@ int main(int argc, char** argv) {
   //     error == Error::ok ,
   //     "Failed to get method_meta for forward, error: 0x%", error);
 
-  std::vector<std::string> imageNames;
-  imageNames.push_back(projectBasePath + "/ultralytics/assets/bus.jpg");
-  imageNames.push_back(projectBasePath + "/ultralytics/assets/zidane.jpg");
+  std::vector<std::string> imageNames({FLAGS_input_path});
 
   for (int i = 0; i < imageNames.size(); ++i) {
     cv::Mat frame = cv::imread(imageNames[i]);
@@ -72,7 +80,7 @@ int main(int argc, char** argv) {
     float scale = 0.8;
     cv::resize(frame, frame, cv::Size(frame.cols * scale, frame.rows * scale));
     // std::raise(SIGINT);
-    cv::imwrite("out_4125_" + std::to_string(i) + ".jpg", frame);
+    cv::imwrite(FLAGS_output_path, frame);
     // cv::imshow("Inference", frame);
     // cv::waitKey(-1);
   }
