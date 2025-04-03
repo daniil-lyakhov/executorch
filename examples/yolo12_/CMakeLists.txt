@@ -53,6 +53,7 @@ message(STATUS ${link_libraries})
 
 set(PROJECT_SOURCES
     main.cpp
+    inference.h
     ${EXECUTORCH_ROOT}/extension/data_loader/file_data_loader.cpp
     ${EXECUTORCH_ROOT}/extension/evalue_util/print_evalue.cpp
     ${EXECUTORCH_ROOT}/extension/runner_util/inputs.cpp
