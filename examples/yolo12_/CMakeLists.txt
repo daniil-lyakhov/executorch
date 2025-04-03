@@ -53,8 +53,6 @@ message(STATUS ${link_libraries})
 
 set(PROJECT_SOURCES
     main.cpp
-    inference.h
-    inference.cpp
     ${EXECUTORCH_ROOT}/extension/data_loader/file_data_loader.cpp
     ${EXECUTORCH_ROOT}/extension/evalue_util/print_evalue.cpp
     ${EXECUTORCH_ROOT}/extension/runner_util/inputs.cpp
@@ -62,7 +60,13 @@ set(PROJECT_SOURCES
 )
 
 add_executable(Yolov8CPPInference ${PROJECT_SOURCES})
-target_link_libraries(Yolov8CPPInference PUBLIC ${link_libraries} ${OpenCV_LIBS} executorch_core)
+target_link_libraries(Yolov8CPPInference PUBLIC
+    ${link_libraries}
+    ${OpenCV_LIBS}
+    executorch_core
+    extension_module
+    extension_tensor
+)
 
 find_package(Threads REQUIRED)
 target_link_libraries(Yolov8CPPInference PRIVATE Threads::Threads)
