@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.5)
 
 project(Yolov8CPPInference VERSION 0.1)
 
+option(USE_OPENVINO_BACKEND "Build the tutorial with the XNNPACK backend" ON)
+option(USE_XNNPACK_BACKEND "Build the tutorial with the XNNPACK backend" OFF)
+
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -34,10 +37,30 @@ set(link_libraries gflags)
 list(APPEND link_libraries portable_ops_lib portable_kernels)
 target_link_options_shared_lib(portable_ops_lib)
 
-set(xnnpack_backend_libs xnnpack_backend XNNPACK microkernels-prod)
-list(APPEND link_libraries ${xnnpack_backend_libs})
-target_link_options_shared_lib(xnnpack_backend)
 
+if(USE_XNNPACK_BACKEND)
+  set(xnnpack_backend_libs xnnpack_backend XNNPACK microkernels-prod)
+  list(APPEND link_libraries ${xnnpack_backend_libs})
+  target_link_options_shared_lib(xnnpack_backend)
+endif()
+
+if(USE_OPENVINO_BACKEND)
+  #find_library(OPENVINO_BACKEND openvino_backend REQUIRED)
+  find_package(OpenVINO REQUIRED)
+  find_library(
+    OPENVINO_BACKEND openvino_backend REQUIRED)
+  add_library(openvino_backend STATIC IMPORTED)
+
+  set_target_properties(openvino_backend PROPERTIES IMPORTED_LOCATION "${OPENVINO_BACKEND}")
+  target_include_directories(
+    openvino_backend
+    INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/../../include
+              ${CMAKE_CURRENT_BINARY_DIR}/../../include/executorch/runtime/core/portable_type/c10
+              ${CMAKE_CURRENT_BINARY_DIR}/../../lib
+  )
+  list(APPEND link_libraries ${OPENVINO_BACKEND})
+  target_link_options_shared_lib(openvino_backend)
+endif()
 
 list(APPEND link_libraries extension_threadpool pthreadpool)
 list(APPEND _common_include_directories
