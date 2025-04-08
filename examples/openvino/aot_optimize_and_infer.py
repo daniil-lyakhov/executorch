@@ -6,11 +6,14 @@
 
 # mypy: disable-error-code="import-untyped,import-not-found"
 
+from itertools import islice
 import argparse
 import time
 from typing import cast, List, Optional
 
 import executorch
+
+from torch.ao.quantization.quantize_pt2e import convert_pt2e, prepare_pt2e
 
 import nncf.torch
 import timm
@@ -19,9 +22,13 @@ import torchvision.models as torchvision_models
 from executorch.backends.openvino.partitioner import OpenvinoPartitioner
 from executorch.backends.openvino.quantizer import quantize_model
 from executorch.exir import (
+    EdgeCompileConfig,
+    ExecutorchBackendConfig,
+    to_edge_transform_and_lower,
+)
+from executorch.exir import (
     EdgeProgramManager,
     ExecutorchProgramManager,
-    to_edge_transform_and_lower,
 )
 from executorch.exir.backend.backend_details import CompileSpec
 from executorch.runtime import Runtime
@@ -32,7 +39,9 @@ from torch.export import export
 from torch.export.exported_program import ExportedProgram
 from torchvision import datasets
 from transformers import AutoModel
+from executorch.backends.xnnpack.partition.xnnpack_partitioner import XnnpackPartitioner
 
+BACKEND = "XNNPACK"
 
 # Function to load a model based on the selected suite
 def load_model(suite: str, model_name: str):
@@ -258,7 +267,7 @@ def main(  # noqa: C901
         example_args = (torch.randn(*input_shape),)
 
     # Export the model to the aten dialect
-    aten_dialect: ExportedProgram = export(model, example_args)
+    aten_dialect: ExportedProgram = torch.export.export_for_training(model, example_args)
 
     if quantize and calibration_dataset:
         if suite == "huggingface":
@@ -277,33 +286,47 @@ def main(  # noqa: C901
         def transform_fn(x):
             return x[0]
 
-        quantized_model = quantize_model(
-            cast(torch.fx.GraphModule, aten_dialect.module()),
-            calibration_dataset,
-            subset_size=subset_size,
-            transform_fn=transform_fn,
+        from executorch.backends.xnnpack.quantizer.xnnpack_quantizer import (
+            get_symmetric_quantization_config,
+            XNNPACKQuantizer,
         )
+        quantizer = XNNPACKQuantizer()
+        # if we set is_per_channel to True, we also need to add out_variant of quantize_per_channel/dequantize_per_channel
+        is_per_channel = False
+        is_dynamic = False
+        operator_config = get_symmetric_quantization_config(
+            is_per_channel=is_per_channel,
+            is_dynamic=is_dynamic,
+        )
+        quantizer.set_global(operator_config)
+        m = prepare_pt2e(aten_dialect.module(), quantizer)
+        # calibration
+        for sample in islice(calibration_dataset, subset_size):
+            m(transform_fn(sample))
+        m = convert_pt2e(m)
+        print("Quantized succsessfully!")
 
-        aten_dialect = export(quantized_model, example_args)
+        aten_dialect = torch.export.export_for_training(m, example_args)
 
     # Convert to edge dialect and lower the module to the backend with a custom partitioner
-    compile_spec = [CompileSpec("device", device.encode())]
-    lowered_module: EdgeProgramManager = to_edge_transform_and_lower(
+    edge = to_edge_transform_and_lower(
         aten_dialect,
-        partitioner=[
-            OpenvinoPartitioner(compile_spec),
-        ],
+        partitioner=[XnnpackPartitioner()],
+        compile_config=EdgeCompileConfig(
+            _check_ir_validity=False if quantize else True,
+            _skip_dim_order=True,  # TODO(T182187531): enable dim order in xnnpack
+        ),
     )
 
-    # Apply backend-specific passes
-    exec_prog = lowered_module.to_executorch(
-        config=executorch.exir.ExecutorchBackendConfig()
+    exec_prog = edge.to_executorch(
+        config=ExecutorchBackendConfig(extract_delegate_segments=False)
     )
 
     # Serialize and save it to a file
+    acc_top1 = None
     if save_model:
         if not model_file_name:
-            model_file_name = f"{model_name}_{'int8' if quantize else 'fp32'}.pte"
+            model_file_name = f"{BACKEND}_{model_name}_{'int8' if quantize else 'fp32'}.pte"
         with open(model_file_name, "wb") as file:
             exec_prog.write_to_file(file)
         print(f"Model exported and saved as {model_file_name} on {device}.")
@@ -327,7 +350,7 @@ def main(  # noqa: C901
             exec_prog, example_args, num_iter, warmup_iter, output_path
         )
         print(f"Average inference time: {avg_time}")
-
+    return acc_top1
 
 if __name__ == "__main__":
     # Argument parser for dynamic inputs
