@@ -6,18 +6,25 @@
 
 # mypy: disable-error-code="import-untyped,import-not-found"
 
+from executorch.backends.xnnpack.partition.xnnpack_partitioner import XnnpackPartitioner
+from executorch.exir import (
+    EdgeCompileConfig,
+    ExecutorchBackendConfig,
+    to_edge_transform_and_lower,
+)
+from torchao.quantization.pt2e.quantize_pt2e import convert_pt2e
+from torchao.quantization.pt2e.quantize_pt2e import prepare_pt2e
+
 import argparse
 import time
 from typing import cast, List, Optional
 
 import executorch
 
-import nncf.torch
+#import nncf.torch
 import timm
 import torch
 import torchvision.models as torchvision_models
-from executorch.backends.openvino.partitioner import OpenvinoPartitioner
-from executorch.backends.openvino.quantizer import quantize_model
 from executorch.exir import (
     EdgeProgramManager,
     ExecutorchProgramManager,
@@ -29,6 +36,7 @@ from sklearn.metrics import accuracy_score
 from timm.data import resolve_data_config
 from timm.data.transforms_factory import create_transform
 from torch.export import export
+from torch.export import export_for_training
 from torch.export.exported_program import ExportedProgram
 from torchvision import datasets
 from transformers import AutoModel
@@ -258,56 +266,100 @@ def main(  # noqa: C901
         example_args = (torch.randn(*input_shape),)
 
     # Export the model to the aten dialect
-    aten_dialect: ExportedProgram = export(model, example_args)
+    aten_dialect: ExportedProgram = export_for_training(model, example_args, strict=True)
 
     if quantize and calibration_dataset:
-        if suite == "huggingface":
-            msg = f"Quantization of {suite} models did not support yet."
-            raise ValueError(msg)
+        if False:
+            from executorch.backends.openvino.quantizer import quantize_model
+            if suite == "huggingface":
+                msg = f"Quantization of {suite} models did not support yet."
+                raise ValueError(msg)
 
-        # Quantize model
-        if not dataset_path:
-            msg = "Quantization requires a calibration dataset."
-            raise ValueError(msg)
+            # Quantize model
+            if not dataset_path:
+                msg = "Quantization requires a calibration dataset."
+                raise ValueError(msg)
 
-        subset_size = 300
-        batch_size = calibration_dataset.batch_size or 1
-        subset_size = (subset_size // batch_size) + int(subset_size % batch_size > 0)
+            subset_size = 300
+            batch_size = calibration_dataset.batch_size or 1
+            subset_size = (subset_size // batch_size) + int(subset_size % batch_size > 0)
+
+            def transform_fn(x):
+                return x[0]
+
+            quantized_model = quantize_model(
+                cast(torch.fx.GraphModule, aten_dialect.module()),
+                calibration_dataset,
+                subset_size=subset_size,
+                transform_fn=transform_fn,
+            )
+        from itertools import islice
+        from executorch.backends.xnnpack.quantizer.xnnpack_quantizer import (
+            get_symmetric_quantization_config,
+            XNNPACKQuantizer,
+        )
+        quantizer = XNNPACKQuantizer()
+        # if we set is_per_channel to True, we also need to add out_variant of quantize_per_channel/dequantize_per_channel
+        is_per_channel = False
+        is_dynamic = False
+        operator_config = get_symmetric_quantization_config(
+            is_per_channel=is_per_channel,
+            is_dynamic=is_dynamic,
+        )
+        quantizer.set_global(operator_config)
+        m = prepare_pt2e(aten_dialect.module(), quantizer)
+        # calibration
 
         def transform_fn(x):
             return x[0]
+        subset_size = 300
+        for sample in islice(calibration_dataset, subset_size):
+            m(transform_fn(sample))
+        quantized_model = convert_pt2e(m)
+        print("Quantized succsessfully!")
 
-        quantized_model = quantize_model(
-            cast(torch.fx.GraphModule, aten_dialect.module()),
-            calibration_dataset,
-            subset_size=subset_size,
-            transform_fn=transform_fn,
-        )
+        aten_dialect = torch.export.export_for_training(quantized_model, example_args, strict=True)
 
-        aten_dialect = export(quantized_model, example_args)
+        #aten_dialect = export(quantized_model, example_args)
 
     # Convert to edge dialect and lower the module to the backend with a custom partitioner
-    compile_spec = [CompileSpec("device", device.encode())]
-    lowered_module: EdgeProgramManager = to_edge_transform_and_lower(
+    if False:
+        from executorch.backends.openvino.partitioner import OpenvinoPartitioner
+        compile_spec = [CompileSpec("device", device.encode())]
+        lowered_module: EdgeProgramManager = to_edge_transform_and_lower(
+            aten_dialect,
+            partitioner=[
+                OpenvinoPartitioner(compile_spec),
+            ],
+        )
+
+        # Apply backend-specific passes
+        exec_prog = lowered_module.to_executorch(
+            config=executorch.exir.ExecutorchBackendConfig()
+        )
+    edge = to_edge_transform_and_lower(
         aten_dialect,
-        partitioner=[
-            OpenvinoPartitioner(compile_spec),
-        ],
+        partitioner=[XnnpackPartitioner()],
+        compile_config=EdgeCompileConfig(
+            _check_ir_validity=False if quantize else True,
+            _skip_dim_order=True,  # TODO(T182187531): enable dim order in xnnpack
+        ),
     )
 
-    # Apply backend-specific passes
-    exec_prog = lowered_module.to_executorch(
-        config=executorch.exir.ExecutorchBackendConfig()
+    exec_prog = edge.to_executorch(
+        config=ExecutorchBackendConfig(extract_delegate_segments=False)
+
     )
 
     # Serialize and save it to a file
     if save_model:
         if not model_file_name:
-            model_file_name = f"{model_name}_{'int8' if quantize else 'fp32'}.pte"
+            model_file_name = f"{model_name}_XNNPACK_{'int8' if quantize else 'fp32'}.pte"
         with open(model_file_name, "wb") as file:
             exec_prog.write_to_file(file)
         print(f"Model exported and saved as {model_file_name} on {device}.")
 
+    acc_top1 = None
     if validate and calibration_dataset:
         if suite == "huggingface":
             msg = f"Validation of {suite} models did not support yet."
@@ -328,6 +380,7 @@ def main(  # noqa: C901
         )
         print(f"Average inference time: {avg_time}")
 
+    return acc_top1
 
 if __name__ == "__main__":
     # Argument parser for dynamic inputs
@@ -409,21 +462,21 @@ if __name__ == "__main__":
 
     # Run the main function with parsed arguments
     # Disable nncf patching as export of the patched model is not supported.
-    with nncf.torch.disable_patching():
-        main(
-            args.suite,
-            args.model,
-            args.input_shape,
-            args.export,
-            args.model_file_name,
-            args.quantize,
-            args.validate,
-            args.dataset,
-            args.device,
-            args.batch_size,
-            args.infer,
-            args.num_iter,
-            args.warmup_iter,
-            args.input_tensor_path,
-            args.output_tensor_path,
-        )
+    #with nncf.torch.disable_patching():
+    main(
+        args.suite,
+        args.model,
+        args.input_shape,
+        args.export,
+        args.model_file_name,
+        args.quantize,
+        args.validate,
+        args.dataset,
+        args.device,
+        args.batch_size,
+        args.infer,
+        args.num_iter,
+        args.warmup_iter,
+        args.input_tensor_path,
+        args.output_tensor_path,
+    )

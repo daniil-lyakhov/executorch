@@ -25,7 +25,8 @@ main() {
         # Note: Add any additional configuration options you need here
         cmake -DCMAKE_INSTALL_PREFIX="${build_dir}" \
               -DCMAKE_BUILD_TYPE=Release \
-              -DEXECUTORCH_BUILD_OPENVINO=ON \
+              -DEXECUTORCH_BUILD_XNNPACK=ON \
+              //-DEXECUTORCH_BUILD_OPENVINO=ON \
               -DEXECUTORCH_BUILD_EXTENSION_DATA_LOADER=ON \
               -DEXECUTORCH_BUILD_EXTENSION_MODULE=ON \
               -DEXECUTORCH_BUILD_EXTENSION_RUNNER_UTIL=ON \
@@ -47,9 +48,9 @@ main() {
 
         # Set parameters to configure the project with CMake
         # Note: Add any additional configuration options you need here
-        export CMAKE_ARGS="-DEXECUTORCH_BUILD_OPENVINO=ON \
+        export CMAKE_ARGS="-DEXECUTORCH_BUILD_XNNPACK=ON \
                            -DEXECUTORCH_BUILD_EXTENSION_MODULE=ON"
-        export CMAKE_BUILD_ARGS="--target openvino_backend"
+        export CMAKE_BUILD_ARGS="--target xnnpack_backend"
 
         # Build the package
         ./install_executorch.sh
