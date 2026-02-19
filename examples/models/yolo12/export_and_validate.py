@@ -272,7 +272,7 @@ def main(
         if input_dims != [640, 640]:
             raise NotImplementedError(
                 f"Validation with the custom input shape {input_dims} is not implmenented."
-                " Please use the default --input_dims=[640, 640] for the validation."
+                " Please use the default --input_dims=[640,640] for the validation."
             )
         stats = validate_yolo(model, exec_prog, val_dataset_yaml_path)
         for stat, value in stats.items():
@@ -294,6 +294,8 @@ def _prepare_validation(
     validator.stride = stride  # used in get_dataloader() for padding
     validator.data = check_det_dataset(dataset_yaml_path)
     validator.init_metrics(unwrap_model(model))
+    validator.device = torch.device("cpu")
+    validator.end2end = False
 
     data_loader = validator.get_dataloader(
         validator.data.get(validator.args.split), validator.args.batch
@@ -338,7 +340,7 @@ if __name__ == "__main__":
         "--model_name",
         type=str,
         default="yolo12s",
-        choices=["yolo12n", "yolo12s", "yolo12m", "yolo12l", "yolo12x"],
+        choices=["yolo12n", "yolo12s", "yolo12m", "yolo12l", "yolo12x", "yolo26n"],
         help="Ultralytics yolo12 model name.",
     )
     parser.add_argument(
