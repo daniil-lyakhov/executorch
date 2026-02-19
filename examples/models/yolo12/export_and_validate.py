@@ -338,7 +338,7 @@ if __name__ == "__main__":
         "--model_name",
         type=str,
         default="yolo12s",
-        choices=["yolo12n", "yolo12s", "yolo12m", "yolo12l", "yolo12x"],
+        choices=["yolo12n", "yolo12s", "yolo12m", "yolo12l", "yolo12x", "yolo26n"],
         help="Ultralytics yolo12 model name.",
     )
     parser.add_argument(
