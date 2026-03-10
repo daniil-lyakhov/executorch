@@ -76,51 +76,48 @@ def lower_to_openvino(
     subset_size: int,
     quantize: bool,
 ) -> ExecutorchProgramManager:
-    # Import openvino locally to avoid nncf side-effects
-    import nncf.torch
     from executorch.backends.openvino.partitioner import OpenvinoPartitioner
     from executorch.backends.openvino.quantizer import OpenVINOQuantizer
     from executorch.backends.openvino.quantizer.quantizer import QuantizationMode
     from nncf.experimental.torch.fx import quantize_pt2e
 
-    with nncf.torch.disable_patching():
-        if quantize:
-            target_input_dims = tuple(example_args[0].shape[2:])
+    if quantize:
+        target_input_dims = tuple(example_args[0].shape[2:])
 
-            def ext_transform_fn(sample):
-                sample = transform_fn(sample)
-                return pad_to_target(sample, target_input_dims)
+        def ext_transform_fn(sample):
+            sample = transform_fn(sample)
+            return pad_to_target(sample, target_input_dims)
 
-            quantizer = OpenVINOQuantizer(mode=QuantizationMode.INT8_TRANSFORMER)
-            quantizer.set_ignored_scope(
-                types=["mul", "sub", "sigmoid", "__getitem__"],
-            )
-            quantized_model = quantize_pt2e(
-                aten_dialect.module(),
-                quantizer,
-                nncf.Dataset(calibration_dataset, ext_transform_fn),
-                subset_size=subset_size,
-                smooth_quant=True,
-                fold_quantize=False,
-            )
-
-            aten_dialect = torch.export.export(quantized_model, example_args)
-            # Convert to edge dialect and lower the module to the backend with a custom partitioner
-        compile_spec = [CompileSpec("device", device.encode())]
-        lowered_module: EdgeProgramManager = to_edge_transform_and_lower(
-            aten_dialect,
-            partitioner=[
-                OpenvinoPartitioner(compile_spec),
-            ],
-            compile_config=EdgeCompileConfig(
-                _skip_dim_order=True,
-            ),
+        quantizer = OpenVINOQuantizer(mode=QuantizationMode.INT8_TRANSFORMER)
+        quantizer.set_ignored_scope(
+            types=["mul", "sub", "sigmoid", "__getitem__"],
+        )
+        quantized_model = quantize_pt2e(
+            aten_dialect.module(),
+            quantizer,
+            nncf.Dataset(calibration_dataset, ext_transform_fn),
+            subset_size=subset_size,
+            smooth_quant=True,
+            fold_quantize=False,
         )
 
-        # Apply backend-specific passes
-        return lowered_module.to_executorch(
-            config=executorch.exir.ExecutorchBackendConfig()
-        )
+        aten_dialect = torch.export.export(quantized_model, example_args)
+        # Convert to edge dialect and lower the module to the backend with a custom partitioner
+    compile_spec = [CompileSpec("device", device.encode())]
+    lowered_module: EdgeProgramManager = to_edge_transform_and_lower(
+        aten_dialect,
+        partitioner=[
+            OpenvinoPartitioner(compile_spec),
+        ],
+        compile_config=EdgeCompileConfig(
+            _skip_dim_order=True,
+        ),
+    )
+
+    # Apply backend-specific passes
+    return lowered_module.to_executorch(
+        config=executorch.exir.ExecutorchBackendConfig()
+    )
 
 
 def lower_to_xnnpack(
@@ -290,6 +287,7 @@ def _prepare_validation(
     }  # highest priority args on the right
 
     validator = model._smart_load("validator")(args=args, _callbacks=model.callbacks)
+    validator.device = torch.device("cpu")
     stride = 32  # default stride
     validator.stride = stride  # used in get_dataloader() for padding
     validator.data = check_det_dataset(dataset_yaml_path)
