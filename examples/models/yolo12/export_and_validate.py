@@ -7,6 +7,49 @@
 # mypy: disable-error-code="import-untyped,import-not-found"
 
 
+###############################################################################
+# Monkey-patch for Python <3.12 dataclass slots bug (CPython #98745).
+#
+# On Python 3.10/3.11 the generated __init__ for a frozen+slots dataclass does
+# NOT initialise fields that have  init=False  with a plain  default=…  (only
+# default_factory works).  PyTorch's LeafSpec inherits "type" and "_context"
+# slots from TreeSpec but never sets them, so any access – including deepcopy –
+# crashes with  AttributeError: 'LeafSpec' object has no attribute 'type'.
+#
+# Fixed upstream in CPython 3.12 (dataclasses._field_init gained a `slots`
+# parameter).  The patch below explicitly sets the two missing slots in
+# LeafSpec.__post_init__.
+###############################################################################
+import sys
+
+#if sys.version_info < (3, 12):
+if True:
+    from torch.utils._pytree import LeafSpec
+
+    _orig_leaf_post_init = LeafSpec.__post_init__
+
+    def _patched_leaf_post_init(self):          # noqa: N802
+        _orig_leaf_post_init(self)
+        # "type" and "_context" are declared with  default=None, init=False
+        # but their slots are never populated on Python <3.12.
+        try:
+            object.__getattribute__(self, "type")
+        except AttributeError:
+            object.__setattr__(self, "type", None)
+        try:
+            object.__getattribute__(self, "_context")
+        except AttributeError:
+            object.__setattr__(self, "_context", None)
+
+    LeafSpec.__post_init__ = _patched_leaf_post_init
+    # Ensure already-cached singleton is also fixed
+    from torch.utils import _pytree
+    _pytree.LeafSpec.__post_init__ = _patched_leaf_post_init
+
+    # Re-create the module-level singleton so it has the slots populated.
+    import torch.utils._pytree as _pytree_mod
+    _pytree_mod._LEAF_SPEC = LeafSpec()
+
 import argparse
 from itertools import islice
 from typing import Any, Dict, Iterator, Optional, Tuple
@@ -79,6 +122,7 @@ def lower_to_openvino(
     from executorch.backends.openvino.partitioner import OpenvinoPartitioner
     from executorch.backends.openvino.quantizer import OpenVINOQuantizer
     from executorch.backends.openvino.quantizer.quantizer import QuantizationMode
+    import nncf
     from nncf.experimental.torch.fx import quantize_pt2e
 
     if quantize:
@@ -88,16 +132,16 @@ def lower_to_openvino(
             sample = transform_fn(sample)
             return pad_to_target(sample, target_input_dims)
 
-        quantizer = OpenVINOQuantizer(mode=QuantizationMode.INT8_TRANSFORMER)
+        quantizer = OpenVINOQuantizer(mode=QuantizationMode.INT8_MIXED)
         quantizer.set_ignored_scope(
-            types=["mul", "sub", "sigmoid", "__getitem__"],
+            subgraphs=[(["detach", "detach_1", "detach_2"], ["output"])]
         )
         quantized_model = quantize_pt2e(
             aten_dialect.module(),
             quantizer,
             nncf.Dataset(calibration_dataset, ext_transform_fn),
             subset_size=subset_size,
-            smooth_quant=True,
+            fast_bias_correction=False,
             fold_quantize=False,
         )
 
@@ -217,17 +261,20 @@ def main(
     # Load the selected model
     model = YOLO(model_name)
 
+    transform_fn = None
     if quantize:
         if video_path is None:
-            raise RuntimeError(
-                "Could not quantize model without the video for the calibration."
-                " --video_path parameter is needed."
-            )
-        cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        print(f"Calibration video dims: h: {height} w: {width}")
-        calibration_dataset = CV2VideoDataset(cap)
+            print(f"Using the calibration dataset {val_dataset_yaml_path} dataset for the calibration.")
+            validator, calibration_dataset = _prepare_validation(model, val_dataset_yaml_path)
+            def transform_fn(frame):
+                batch = validator.preprocess(frame)
+                return batch["img"]
+        else:
+            cap = cv2.VideoCapture(video_path, cv2.CAP_FFMPEG)
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            print(f"Calibration video dims: h: {height} w: {width}")
+            calibration_dataset = CV2VideoDataset(cap)
     else:
         calibration_dataset = None
 
@@ -237,11 +284,13 @@ def main(
 
     pt_model = model.model.to(torch.device("cpu"))
 
-    def transform_fn(frame):
+    def transform_fn_basic(frame):
         input_tensor = model.predictor.preprocess([frame])
         return input_tensor
 
-    example_args = (transform_fn(np_dummy_tensor),)
+    example_args = (transform_fn_basic(np_dummy_tensor),)
+    transform_fn = transform_fn or transform_fn_basic
+
     with torch.no_grad():
         aten_dialect = torch.export.export(pt_model, args=example_args)
 
@@ -337,8 +386,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_name",
         type=str,
-        default="yolo12s",
-        choices=["yolo12n", "yolo12s", "yolo12m", "yolo12l", "yolo12x", "yolo26n"],
+        default="yolo26s",
+        choices=["yolo26n", "yolo26s", "yolo26m", "yolo26l", "yolo26x"],
         help="Ultralytics yolo12 model name.",
     )
     parser.add_argument(
